@@ -1,0 +1,58 @@
+name: Build Unsigned IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    env:
+      HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Fix Xcode SDK paths
+        run: sudo xcode-select --reset
+
+      - name: Resolve SPM Dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project SahandInfo.xcodeproj \
+            -scheme SahandInfo \
+            -clonedSourcePackagesDirPath SourcePackages
+
+      - name: Build unsigned .app
+        run: |
+          xcodebuild \
+            -project SahandInfo.xcodeproj \
+            -scheme SahandInfo \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -clonedSourcePackagesDirPath SourcePackages \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            -skipMacroValidation \
+            build
+
+      - name: Package IPA
+        run: |
+          mkdir Payload
+          cp -r build/Build/Products/Release-iphoneos/*.app Payload/
+          zip -r SahandInfo.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SahandInfo-unsigned-ipa
+          path: SahandInfo.ipa
